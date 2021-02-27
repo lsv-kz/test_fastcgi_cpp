@@ -34,9 +34,9 @@ typedef struct {
 class FCGI_server
 {
     int err = 0;
-    char buf[SIZE_BUF_OUT];
+    char buf_out[SIZE_BUF_OUT];
     const char *str_zero = "\0\0\0\0\0\0\0\0";
-    int offset = 8, all_send = 0;
+    int offset_out = 8, all_send = 0;
     int fcgi_sock;
     
     void fcgi_set_header(char *p, int type, int len)
@@ -55,20 +55,20 @@ class FCGI_server
     
         *p++ = padding;
         *p = 0;
-        offset += padding;
-        if (padding) memcpy(buf + 8 + len, str_zero, padding);
+        offset_out += padding;
+        if (padding) memcpy(buf_out + 8 + len, str_zero, padding);
     }
     
     void fcgi_send()
     {
         int write_bytes = 0, ret = 0;
         struct pollfd fdwr;
-        char *p = buf;
+        char *p = buf_out;
         
         fdwr.fd = fcgi_sock;
 		fdwr.events = POLLOUT;
 
-        while (offset > 0)
+        while (offset_out > 0)
 		{
 			ret = poll(&fdwr, 1, TimeoutCGI * 1000);
 			if (ret == -1)
@@ -89,7 +89,7 @@ class FCGI_server
 				break;
 			}
 			
-			ret = write(fcgi_sock, p, offset);
+			ret = write(fcgi_sock, p, offset_out);
 			if (ret == -1)
 			{
 				if ((errno == EINTR) || (errno == EAGAIN))
@@ -98,7 +98,7 @@ class FCGI_server
 			}
 			
 			write_bytes += ret;
-			offset -= ret;
+			offset_out -= ret;
 			p += ret;
 		}
 		
@@ -106,10 +106,10 @@ class FCGI_server
             err = 1;
         else
             all_send += write_bytes;
-        offset = 8;
+        offset_out = 8;
     }
     
-    int fcgi_read(char *b, int len)
+    int fcgi_read(char *buf_, int len)
     {
 		int read_bytes = 0, ret;
 		struct pollfd fdrd;
@@ -117,7 +117,7 @@ class FCGI_server
 		
 		fdrd.fd = fcgi_sock;
 		fdrd.events = POLLIN;
-		p = b;
+		p = buf_;
 		
 		while (len > 0)
 		{
@@ -161,15 +161,15 @@ class FCGI_server
     int fcgi_read_header(fcgi_header *header)
     {
         int n;
-        char buf[8];
+        char buf_[8];
     
-        n = fcgi_read(buf, 8);
+        n = fcgi_read(buf_, 8);
         if (n <= 0)
             return n;
 
-        header->type = (unsigned char)buf[1];
-        header->paddingLen = (unsigned char)buf[6];
-        header->len = ((unsigned char)buf[4]<<8) | (unsigned char)buf[5];
+        header->type = (unsigned char)buf_[1];
+        header->paddingLen = (unsigned char)buf_[6];
+        header->len = ((unsigned char)buf_[4]<<8) | (unsigned char)buf_[5];
     
         return n;
     }
@@ -183,12 +183,18 @@ class FCGI_server
 			err = 1;
 			return;
 		}
-    
-		if (header.len && ((header.len + header.paddingLen) < 16))
+		
+		if (header.type != FCGI_BEGIN_REQUEST)
 		{
-			char buf[16];
-			ret = fcgi_read(buf, header.len + header.paddingLen);
-			if (ret != (header.len + header.paddingLen))
+			err = 1;
+			return;
+		}
+    
+		if (header.len == 8)
+		{
+			char buf_[8];
+			ret = fcgi_read(buf_, 8);
+			if (ret != 8)
 				err = 1;
 		}
 		else
@@ -200,7 +206,7 @@ public:
     FCGI_server(int s)
     {
         fcgi_sock = s;
-        offset = 8;
+        offset_out = 8;
         err = 0;
         fcgi_get_begin();
     }
@@ -217,41 +223,41 @@ public:
         int n = 0, len = strlen(s);
         if (len == 0)
         {
-            fcgi_set_header(buf, FCGI_STDOUT, offset - 8);
-            if (SIZE_BUF_OUT < (offset + 24))
+            fcgi_set_header(buf_out, FCGI_STDOUT, offset_out - 8);
+            if (SIZE_BUF_OUT < (offset_out + 24))
             {
                 fcgi_send();
-                fcgi_set_header(buf, FCGI_STDOUT, 0);
-                fcgi_set_header(buf + offset, FCGI_END_REQUEST, 8);
-                offset += 8;
-                memcpy(buf + offset, str_zero, 8);
-                offset += 8;
+                fcgi_set_header(buf_out, FCGI_STDOUT, 0);
+                fcgi_set_header(buf_out + offset_out, FCGI_END_REQUEST, 8);
+                offset_out += 8;
+                memcpy(buf_out + offset_out, str_zero, 8);
+                offset_out += 8;
             }
             else
             {
-                if (offset > 8)
+                if (offset_out > 8)
                 {
-                    fcgi_set_header(buf + offset, FCGI_STDOUT, 0);
-                    offset += 8;
+                    fcgi_set_header(buf_out + offset_out, FCGI_STDOUT, 0);
+                    offset_out += 8;
                 }
-                fcgi_set_header(buf + offset, FCGI_END_REQUEST, 8);
-                offset += 8;
-                memcpy(buf + offset, str_zero, 8);
-                offset += 8;
+                fcgi_set_header(buf_out + offset_out, FCGI_END_REQUEST, 8);
+                offset_out += 8;
+                memcpy(buf_out + offset_out, str_zero, 8);
+                offset_out += 8;
             }
             
             fcgi_send();
             return *this;
         }
         
-        while (SIZE_BUF_OUT < (offset + len))
+        while (SIZE_BUF_OUT < (offset_out + len))
         {
-            int l = SIZE_BUF_OUT - offset;
-            memcpy(buf + offset, s + n, l);
-            offset += l;
+            int l = SIZE_BUF_OUT - offset_out;
+            memcpy(buf_out + offset_out, s + n, l);
+            offset_out += l;
             len -= l;
             n += l;
-            fcgi_set_header(buf, FCGI_STDOUT, offset - 8);
+            fcgi_set_header(buf_out, FCGI_STDOUT, offset_out - 8);
             fcgi_send();
             if (err)
             {
@@ -259,11 +265,11 @@ public:
             }
         }
         
-        memcpy(buf + offset, s + n, len);
-        offset += len;
-        if (SIZE_BUF_OUT == (offset + 6))
+        memcpy(buf_out + offset_out, s + n, len);
+        offset_out += len;
+        if (SIZE_BUF_OUT == (offset_out + 6))
         {
-            fcgi_set_header(buf, FCGI_STDOUT, offset - 8);
+            fcgi_set_header(buf_out, FCGI_STDOUT, offset_out - 8);
             fcgi_send();
         }
         return *this;
@@ -272,9 +278,9 @@ public:
     FCGI_server & operator << (const long long ll)
     {
         if (err) return *this;
-        char buf[21];
-        snprintf(buf, sizeof(buf), "%lld", ll);
-        *this << buf;
+        char buf_[21];
+        snprintf(buf_, sizeof(buf_), "%lld", ll);
+        *this << buf_;
         return *this;
     }
     
@@ -302,20 +308,20 @@ int FCGI_server::fcgi_get_param(Array <String> &Param)
     }
 
     const int size = 1024;
-    char buf[size], *p = buf;
+    char buf_[size], *p = buf_;
     int rd;
     int n = 0;
     String s;
     while (header.len > 0)
     {
-        for ( int i = 0; (i < n) && (p > buf); i++)
-            buf[i] = *(p + i);
+        for ( int i = 0; (i < n) && (p > buf_); i++)
+            buf_[i] = *(p + i);
 
         if (header.len < (size - n))
             rd = header.len;
         else
             rd = (size - n);
-        p = buf;
+        p = buf_;
         int n_ = fcgi_read(p + n, rd);
         if ((n_ != rd) || (n_ == 0))
         {
@@ -363,12 +369,12 @@ int FCGI_server::fcgi_get_param(Array <String> &Param)
                 s.append(p, n);
                 len_par -= n;
                 
-                p = buf;
+                p = buf_;
                 if (header.len < size)
                     rd = header.len;
                 else
                     rd = size;
-                n = fcgi_read(buf, rd);
+                n = fcgi_read(buf_, rd);
                 if ((n != rd) || (n == 0))
                 {
                     err = 1;
@@ -388,12 +394,12 @@ int FCGI_server::fcgi_get_param(Array <String> &Param)
                 s.append(p, n);
                 len_val -= n;
                 
-                p = buf;
+                p = buf_;
                 if (header.len < size)
                     rd = header.len;
                 else
                     rd = size;
-                n = fcgi_read(buf, rd);
+                n = fcgi_read(buf_, rd);
                 if ((n != rd) || (n == 0))
                 {
 					err = 1;
@@ -413,7 +419,7 @@ int FCGI_server::fcgi_get_param(Array <String> &Param)
     
     if (header.paddingLen)
     {
-        n = fcgi_read(buf, header.paddingLen);
+        n = fcgi_read(buf_, header.paddingLen);
         if (n <= 0)
         {
 			err = 1;

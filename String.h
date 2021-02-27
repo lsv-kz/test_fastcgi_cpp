@@ -1,6 +1,6 @@
 #ifndef CLASS_STRING_H_
 #define CLASS_STRING_H_
-//#include <iostream>
+
 #include <cstring>
 
 //======================================================================
@@ -243,8 +243,7 @@ public:
     //------------------------------------------------------------------
     void append(const char *s, unsigned int n)
     {
-        if (err) return;
-        if (!s) return;
+        if (!s || err) return;
         if ((lenBuf + n) >= sizeBuf)
         {
             reserve(lenBuf + n + 1 + add);
@@ -296,8 +295,6 @@ public:
             if (p_ >= lenBuf) break;
         }
         
-        *(ptr + lenBuf) = 0;
-        
         char *p1 = (char*)memchr(ptr + p_, ' ', lenBuf - p_);
         char *p2 = (char*)memchr(ptr + p_, '\t', lenBuf - p_);
         char *p3 = (char*)memchr(ptr + p_, '\r', lenBuf - p_);
@@ -321,7 +318,7 @@ public:
         else
             return p5;
     }
-    //------------------------------------------------------------------
+    
     String & operator >> (String & s)
     {
         if (err || (this == &s)) return *this;
@@ -361,7 +358,7 @@ public:
         }
         return *this;
     }
-	//------------------------------------------------------------------
+
     template <typename T>
     String & operator >> (T &t)
     {
