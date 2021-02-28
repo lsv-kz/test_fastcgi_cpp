@@ -109,6 +109,43 @@ class FCGI_server
         offset_out = 8;
     }
     
+    void fcgi_get_begin()
+	{
+		fcgi_header header;
+		int ret = fcgi_read_header(&header);
+		if (ret != 8)
+		{
+			err = 1;
+			return;
+		}
+		
+		if (header.type != FCGI_BEGIN_REQUEST)
+		{
+			err = 1;
+			return;
+		}
+    
+		if (header.len == 8)
+		{
+			char buf_[8];
+			ret = fcgi_read(buf_, 8);
+			if (ret != 8)
+				err = 1;
+		}
+		else
+			err = 1;
+	}
+    
+    FCGI_server() {}
+public:
+    FCGI_server(int s)
+    {
+        fcgi_sock = s;
+        offset_out = 8;
+        err = 0;
+        fcgi_get_begin();
+    }
+    
     int fcgi_read(char *buf_, int len)
     {
 		int read_bytes = 0, ret;
@@ -172,43 +209,6 @@ class FCGI_server
         header->len = ((unsigned char)buf_[4]<<8) | (unsigned char)buf_[5];
     
         return n;
-    }
-    
-    void fcgi_get_begin()
-	{
-		fcgi_header header;
-		int ret = fcgi_read_header(&header);
-		if (ret != 8)
-		{
-			err = 1;
-			return;
-		}
-		
-		if (header.type != FCGI_BEGIN_REQUEST)
-		{
-			err = 1;
-			return;
-		}
-    
-		if (header.len == 8)
-		{
-			char buf_[8];
-			ret = fcgi_read(buf_, 8);
-			if (ret != 8)
-				err = 1;
-		}
-		else
-			err = 1;
-	}
-    
-    FCGI_server() {}
-public:
-    FCGI_server(int s)
-    {
-        fcgi_sock = s;
-        offset_out = 8;
-        err = 0;
-        fcgi_get_begin();
     }
     
     FCGI_server & operator << (const char *s)
@@ -284,30 +284,22 @@ public:
         return *this;
     }
     
-    int fcgi_get_param(Array <String> &Param);
+    int fcgi_get_param(fcgi_header & header, Array <String> & Param);
     
     int error() const { return err; }
     int send_bytes() { return all_send; }
 };
 //----------------------------------------------------------------------
-int FCGI_server::fcgi_get_param(Array <String> &Param)
+int FCGI_server::fcgi_get_param(fcgi_header & header, Array <String> & Param)
 {
-    fcgi_header header;
     int num_par = 0;
-    int ret = fcgi_read_header(&header);
-    if (ret != 8)
-    {
-        err = 1;
-        return -1;
-    }
-    
     if (header.type != FCGI_PARAMS)
     {
         err = 1;
         return -1;
     }
 
-    const int size = 1024;
+    const int size = 16;
     char buf_[size], *p = buf_;
     int rd;
     int n = 0;
@@ -326,7 +318,7 @@ int FCGI_server::fcgi_get_param(Array <String> &Param)
         if ((n_ != rd) || (n_ == 0))
         {
             err = 1;
-            return ret;
+            return n_;
         }
 
         n += n_;
@@ -378,7 +370,7 @@ int FCGI_server::fcgi_get_param(Array <String> &Param)
                 if ((n != rd) || (n == 0))
                 {
                     err = 1;
-                    return ret;
+                    return n;
                 }
 
                 header.len -= n;
@@ -403,7 +395,7 @@ int FCGI_server::fcgi_get_param(Array <String> &Param)
                 if ((n != rd) || (n == 0))
                 {
 					err = 1;
-                    return ret;
+                    return n;
                 }
 
                 header.len -= n;
