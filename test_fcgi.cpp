@@ -33,7 +33,7 @@ unique_lock<mutex> lk(mtx_thr);
     {
         cond_exit_thr.wait(lk);
     }
-    return d;//count_thr;
+    return d;
 }
 //----------------------------------------------------------------------
 void close_thr(void)
