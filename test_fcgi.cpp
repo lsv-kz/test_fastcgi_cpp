@@ -12,7 +12,6 @@
 #include "fcgi_server.h"
 
 int create_server_socket(const char *host, int port);
-
 //======================================================================
 using namespace std;
 

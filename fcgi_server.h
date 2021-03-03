@@ -28,7 +28,7 @@ const int SIZE_BUF_OUT = 4096;
 typedef struct {
     unsigned char type;
     int len;
-    int paddingLen;
+    unsigned char paddingLen;
 } fcgi_header;
 
 class FCGI_server
