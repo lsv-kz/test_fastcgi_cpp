@@ -4,6 +4,7 @@ CC = c++
 #CC = clang++
 
 OBJSDIR = objs
+$(shell mkdir -p $(OBJSDIR))
 
 OBJS = $(OBJSDIR)/test_fcgi.o \
 	$(OBJSDIR)/create_socket.o
