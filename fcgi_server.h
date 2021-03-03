@@ -66,42 +66,42 @@ class FCGI_server
         char *p = buf_out;
         
         fdwr.fd = fcgi_sock;
-		fdwr.events = POLLOUT;
+        fdwr.events = POLLOUT;
 
         while (offset_out > 0)
-		{
-			ret = poll(&fdwr, 1, TimeoutCGI * 1000);
-			if (ret == -1)
-			{
-				if (errno == EINTR)
-					continue;
-				break;
-			}
-			else if (!ret)
-			{
-				ret = -408;
-				break;
-			}
-			
-			if (fdwr.revents != POLLOUT)
-			{
-				ret = -1;
-				break;
-			}
-			
-			ret = write(fcgi_sock, p, offset_out);
-			if (ret == -1)
-			{
-				if ((errno == EINTR) || (errno == EAGAIN))
-					continue;
-				break;
-			}
-			
-			write_bytes += ret;
-			offset_out -= ret;
-			p += ret;
-		}
-		
+        {
+            ret = poll(&fdwr, 1, TimeoutCGI * 1000);
+            if (ret == -1)
+            {
+                if (errno == EINTR)
+                    continue;
+                break;
+            }
+            else if (!ret)
+            {
+                ret = -408;
+                break;
+            }
+            
+            if (fdwr.revents != POLLOUT)
+            {
+                ret = -1;
+                break;
+            }
+            
+            ret = write(fcgi_sock, p, offset_out);
+            if (ret == -1)
+            {
+                if ((errno == EINTR) || (errno == EAGAIN))
+                    continue;
+                break;
+            }
+            
+            write_bytes += ret;
+            offset_out -= ret;
+            p += ret;
+        }
+        
         if (ret <= 0)
             err = 1;
         else
@@ -110,31 +110,31 @@ class FCGI_server
     }
     
     void fcgi_get_begin()
-	{
-		fcgi_header header;
-		int ret = fcgi_read_header(&header);
-		if (ret != 8)
-		{
-			err = 1;
-			return;
-		}
-		
-		if (header.type != FCGI_BEGIN_REQUEST)
-		{
-			err = 1;
-			return;
-		}
+    {
+        fcgi_header header;
+        int ret = fcgi_read_header(&header);
+        if (ret != 8)
+        {
+            err = 1;
+            return;
+        }
+        
+        if (header.type != FCGI_BEGIN_REQUEST)
+        {
+            err = 1;
+            return;
+        }
     
-		if (header.len == 8)
-		{
-			char buf_[8];
-			ret = fcgi_read(buf_, 8);
-			if (ret != 8)
-				err = 1;
-		}
-		else
-			err = 1;
-	}
+        if (header.len == 8)
+        {
+            char buf_[8];
+            ret = fcgi_read(buf_, 8);
+            if (ret != 8)
+                err = 1;
+        }
+        else
+            err = 1;
+    }
     
     FCGI_server() {}
 public:
@@ -148,52 +148,52 @@ public:
     
     int fcgi_read(char *buf_, int len)
     {
-		int read_bytes = 0, ret;
-		struct pollfd fdrd;
-		char *p;
-		
-		fdrd.fd = fcgi_sock;
-		fdrd.events = POLLIN;
-		p = buf_;
-		
-		while (len > 0)
-		{
-			ret = poll(&fdrd, 1, TimeoutCGI * 1000);
-			if (ret == -1)
-			{
-				if (errno == EINTR)
-					continue;
-				return -1;
-			}
-			else if (!ret)
-			{
-				return -1;
-			}
-			if (fdrd.revents & POLLIN)
-			{
-				ret = read(fcgi_sock, p, len);
-				if (ret == -1)
-				{
-					return -1;
-				}
-				else if (ret == 0)
-				{
-					return -1;
-				}
-				else
-				{
-					p += ret;
-					len -= ret;
-					read_bytes += ret;
-				}
-			}
-			else
-			{
-				return -1;
-			}
-		}
-		return read_bytes;
-	}
+        int read_bytes = 0, ret;
+        struct pollfd fdrd;
+        char *p;
+        
+        fdrd.fd = fcgi_sock;
+        fdrd.events = POLLIN;
+        p = buf_;
+        
+        while (len > 0)
+        {
+            ret = poll(&fdrd, 1, TimeoutCGI * 1000);
+            if (ret == -1)
+            {
+                if (errno == EINTR)
+                    continue;
+                return -1;
+            }
+            else if (!ret)
+            {
+                return -1;
+            }
+            if (fdrd.revents & POLLIN)
+            {
+                ret = read(fcgi_sock, p, len);
+                if (ret == -1)
+                {
+                    return -1;
+                }
+                else if (ret == 0)
+                {
+                    return -1;
+                }
+                else
+                {
+                    p += ret;
+                    len -= ret;
+                    read_bytes += ret;
+                }
+            }
+            else
+            {
+                return -1;
+            }
+        }
+        return read_bytes;
+    }
     
     int fcgi_read_header(fcgi_header *header)
     {
@@ -299,7 +299,7 @@ int FCGI_server::fcgi_get_param(fcgi_header & header, Array <String> & Param)
         return -1;
     }
 
-    const int size = 16;
+    const int size = 1024; // size >= 256
     char buf_[size], *p = buf_;
     int rd;
     int n = 0;
@@ -394,7 +394,7 @@ int FCGI_server::fcgi_get_param(fcgi_header & header, Array <String> & Param)
                 n = fcgi_read(buf_, rd);
                 if ((n != rd) || (n == 0))
                 {
-					err = 1;
+                    err = 1;
                     return n;
                 }
 
@@ -414,9 +414,9 @@ int FCGI_server::fcgi_get_param(fcgi_header & header, Array <String> & Param)
         n = fcgi_read(buf_, header.paddingLen);
         if (n <= 0)
         {
-			err = 1;
-			return -1;
-		}
+            err = 1;
+            return -1;
+        }
     }
     return num_par;
 }
