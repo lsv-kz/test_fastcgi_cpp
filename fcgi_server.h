@@ -21,14 +21,13 @@
 #define FCGI_UNKNOWN_TYPE       11
 #define FCGI_MAXTYPE (FCGI_UNKNOWN_TYPE)
 
-
 const int TimeoutCGI = 10;
 const int SIZE_BUF_OUT = 4096;
 
 typedef struct {
     unsigned char type;
     int len;
-    unsigned char paddingLen;
+    int paddingLen;
 } fcgi_header;
 
 class FCGI_server
@@ -38,6 +37,8 @@ class FCGI_server
     const char *str_zero = "\0\0\0\0\0\0\0\0";
     int offset_out = 8, all_send = 0;
     int fcgi_sock;
+    
+    Array <String> Param;
     
     void fcgi_set_header(char *p, int type, int len)
     {
@@ -127,8 +128,8 @@ class FCGI_server
     
         if (header.len == 8)
         {
-            char buf_[8];
-            ret = fcgi_read(buf_, 8);
+            char buf[8];
+            ret = fcgi_read(buf, 8);
             if (ret != 8)
                 err = 1;
         }
@@ -137,6 +138,36 @@ class FCGI_server
     }
     
     FCGI_server() {}
+    void get_par()
+    {
+        int ret = 0;
+        fcgi_header hd;
+        Param.reserve(20);
+        for ( ; ; )
+        {
+            if ((ret = fcgi_read_header(&hd)) <= 0)
+            {
+                err = 1;
+                break;
+            }
+            
+            if (hd.len == 0)
+                break;
+        
+            if (hd.type != FCGI_PARAMS)
+            {
+                err = 1;
+                break;
+            }
+            ret = fcgi_get_param(hd);
+            if (ret < 0)
+            {
+                err = 1;
+                break;
+            }
+        }
+    }
+    //==================================================================
 public:
     FCGI_server(int s)
     {
@@ -144,9 +175,10 @@ public:
         offset_out = 8;
         err = 0;
         fcgi_get_begin();
+        get_par();
     }
     
-    int fcgi_read(char *buf_, int len)
+    int fcgi_read(char *buf, int len)
     {
         int read_bytes = 0, ret;
         struct pollfd fdrd;
@@ -154,7 +186,7 @@ public:
         
         fdrd.fd = fcgi_sock;
         fdrd.events = POLLIN;
-        p = buf_;
+        p = buf;
         
         while (len > 0)
         {
@@ -198,15 +230,15 @@ public:
     int fcgi_read_header(fcgi_header *header)
     {
         int n;
-        char buf_[8];
+        char buf[8];
     
-        n = fcgi_read(buf_, 8);
+        n = fcgi_read(buf, 8);
         if (n <= 0)
             return n;
 
-        header->type = (unsigned char)buf_[1];
-        header->paddingLen = (unsigned char)buf_[6];
-        header->len = ((unsigned char)buf_[4]<<8) | (unsigned char)buf_[5];
+        header->type = (unsigned char)buf[1];
+        header->paddingLen = (unsigned char)buf[6];
+        header->len = ((unsigned char)buf[4]<<8) | (unsigned char)buf[5];
     
         return n;
     }
@@ -278,19 +310,29 @@ public:
     FCGI_server & operator << (const long long ll)
     {
         if (err) return *this;
-        char buf_[21];
-        snprintf(buf_, sizeof(buf_), "%lld", ll);
-        *this << buf_;
+        char buf[21];
+        snprintf(buf, sizeof(buf), "%lld", ll);
+        *this << buf;
         return *this;
     }
     
-    int fcgi_get_param(fcgi_header & header, Array <String> & Param);
+    int fcgi_get_param(fcgi_header & header);
     
     int error() const { return err; }
     int send_bytes() { return all_send; }
+    int len_param() { return  Param.len(); }
+    const char *param(int n)
+    {
+        if (n >= Param.len())
+        {
+            err = 1;
+            return NULL;
+        }
+        return Param.get(n)->str();
+    }
 };
 //----------------------------------------------------------------------
-int FCGI_server::fcgi_get_param(fcgi_header & header, Array <String> & Param)
+int FCGI_server::fcgi_get_param(fcgi_header & header)
 {
     int num_par = 0;
     if (header.type != FCGI_PARAMS)
@@ -299,26 +341,26 @@ int FCGI_server::fcgi_get_param(fcgi_header & header, Array <String> & Param)
         return -1;
     }
 
-    const int size = 1024; // size >= 256
-    char buf_[size], *p = buf_;
+    const int size = 1024;
+    char buf[size], *p = buf;
     int rd;
     int n = 0;
     String s;
     while (header.len > 0)
     {
-        for ( int i = 0; (i < n) && (p > buf_); i++)
-            buf_[i] = *(p + i);
+        for ( int i = 0; (i < n) && (p > buf); i++)
+            buf[i] = *(p + i);
 
         if (header.len < (size - n))
             rd = header.len;
         else
             rd = (size - n);
-        p = buf_;
+        p = buf;
         int n_ = fcgi_read(p + n, rd);
         if ((n_ != rd) || (n_ == 0))
         {
             err = 1;
-            return n_;
+            return -1;
         }
 
         n += n_;
@@ -361,16 +403,16 @@ int FCGI_server::fcgi_get_param(fcgi_header & header, Array <String> & Param)
                 s.append(p, n);
                 len_par -= n;
                 
-                p = buf_;
+                p = buf;
                 if (header.len < size)
                     rd = header.len;
                 else
                     rd = size;
-                n = fcgi_read(buf_, rd);
+                n = fcgi_read(buf, rd);
                 if ((n != rd) || (n == 0))
                 {
                     err = 1;
-                    return n;
+                    return -1;
                 }
 
                 header.len -= n;
@@ -386,16 +428,16 @@ int FCGI_server::fcgi_get_param(fcgi_header & header, Array <String> & Param)
                 s.append(p, n);
                 len_val -= n;
                 
-                p = buf_;
+                p = buf;
                 if (header.len < size)
                     rd = header.len;
                 else
                     rd = size;
-                n = fcgi_read(buf_, rd);
+                n = fcgi_read(buf, rd);
                 if ((n != rd) || (n == 0))
                 {
                     err = 1;
-                    return n;
+                    return -1;
                 }
 
                 header.len -= n;
@@ -411,7 +453,7 @@ int FCGI_server::fcgi_get_param(fcgi_header & header, Array <String> & Param)
     
     if (header.paddingLen)
     {
-        n = fcgi_read(buf_, header.paddingLen);
+        n = fcgi_read(buf, header.paddingLen);
         if (n <= 0)
         {
             err = 1;

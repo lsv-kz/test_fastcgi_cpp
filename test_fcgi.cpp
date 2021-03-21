@@ -28,12 +28,11 @@ int start_thr(void)
 {
 unique_lock<mutex> lk(mtx_thr);
     ++count_thr;
-    int d = count_thr;
     while (count_thr >= max_thr)
     {
         cond_exit_thr.wait(lk);
     }
-    return d;
+    return count_thr;
 }
 //----------------------------------------------------------------------
 void close_thr(void)
@@ -44,7 +43,7 @@ mtx_thr.unlock();
     cond_exit_thr.notify_one();
 }
 //======================================================================
-int fcgi_out(int count_conn, FCGI_server &Fcgi, Array <String> & Param)
+int fcgi_out(int count_conn, FCGI_server &Fcgi)
 {
     Fcgi << "Content-Type: text/plain; charset=utf-8\r\n\r\n";
     Fcgi << "count = " << count_conn << "\n";
@@ -52,47 +51,47 @@ int fcgi_out(int count_conn, FCGI_server &Fcgi, Array <String> & Param)
     fcgi_header hd;
     for ( ; ; )
     {
-		int ret = Fcgi.fcgi_read_header(&hd);
-		if (ret <= 0)
-		{
-			printf("<%s:%d>  Error fcgi_read_header()\n", __func__, __LINE__);
-			return -1;
-		}
-	//	printf("<%s:%d>  type=%d, len=%d, padd=%d\n", __func__, __LINE__, hd.type, hd.len, hd.paddingLen);
-		if (hd.len == 0)
-			break;
-		
-		if (hd.type != FCGI_STDIN)
-		{
-			printf("<%s:%d>  Error type != FCGI_STDIN\n", __func__, __LINE__);
-			return -1;
-		}
-		
-		const int size_buf = 255;
-		char buf[size_buf + 1];
-		while (hd.len > 0)
-		{
-			int rd = (hd.len > size_buf) ? size_buf : hd.len;
-			ret = Fcgi.fcgi_read(buf, rd);
-			if (ret <= 0)
-			{
-				printf("<%s:%d>  Error fcgi_read()\n", __func__, __LINE__);
-				return -1;
-			}
-			
-			buf[ret] = 0;
-			Fcgi << buf;
-			hd.len -= ret;
-		}
-		if ((hd.paddingLen > 0) && (hd.paddingLen < 8))
-			Fcgi.fcgi_read(buf, hd.paddingLen);
-	}
-	
-	Fcgi << "\n\n";
+        int ret = Fcgi.fcgi_read_header(&hd);
+        if (ret <= 0)
+        {
+            printf("<%s:%d>  Error fcgi_read_header()\n", __func__, __LINE__);
+            return -1;
+        }
+    //  printf("<%s:%d>  type=%d, len=%d, padd=%d\n", __func__, __LINE__, hd.type, hd.len, hd.paddingLen);
+        if (hd.len == 0)
+            break;
+        
+        if (hd.type != FCGI_STDIN)
+        {
+            printf("<%s:%d>  Error type != FCGI_STDIN\n", __func__, __LINE__);
+            return -1;
+        }
+        
+        const int size_buf = 255;
+        char buf[size_buf + 1];
+        while (hd.len > 0)
+        {
+            int rd = (hd.len > size_buf) ? size_buf : hd.len;
+            ret = Fcgi.fcgi_read(buf, rd);
+            if (ret <= 0)
+            {
+                printf("<%s:%d>  Error fcgi_read()\n", __func__, __LINE__);
+                return -1;
+            }
+            
+            buf[ret] = 0;
+            Fcgi << buf;
+            hd.len -= ret;
+        }
+        if ((hd.paddingLen > 0) && (hd.paddingLen < 8))
+            Fcgi.fcgi_read(buf, hd.paddingLen);
+    }
     
-    for ( int i = 0, n = Param.len(); i < n; ++i)
+    Fcgi << "\n\n";
+    
+    for ( int i = 0, n = Fcgi.len_param(); i < n; ++i)
     {
-        Fcgi << Param.get(i)->str() << "\n";
+        Fcgi << Fcgi.param(i) << "\n";
         if (Fcgi.error())
         {
             printf("<%s:%d> Error\n", __func__, __LINE__);
@@ -113,38 +112,7 @@ void response(int fcgi_sock, int count_conn)
         return;
     }
     
-    Array <String> Param(20);
-    int ret = 0;
-    fcgi_header hd;
-    for ( ; ; )
-    {
-		if ((ret = Fcgi.fcgi_read_header(&hd)) <= 0)
-			break;
-//printf("<%s:%d>  type=%d, len=%d, padd=%d\n", __func__, __LINE__, hd.type, hd.len, hd.paddingLen);
-		if (hd.len == 0)
-			break;
-		
-		if (hd.type != FCGI_PARAMS)
-		{
-			ret = -1;
-			break;
-		}
-        ret = Fcgi.fcgi_get_param(hd, Param);
-        if (ret <= 0) break;
-    }
-
-    if (ret < 0)
-    {
-        printf("<%s:%d>  Error fcgi_get_param()\n", __func__, __LINE__);
-        return;
-    }
-/*
-    for ( int i = 0, n = Param.len(); i < n; ++i)
-    {
-        cout << "[" << Param.get(i)->str() << "]\n";
-    }
-*/
-    fcgi_out(count_conn, Fcgi, Param);
+    fcgi_out(count_conn, Fcgi);
     Fcgi << "";
 }
 
@@ -160,11 +128,11 @@ void response_(int sock, int count_conn)
 int main(int argc, char *argv[])
 {
     unsigned int count_conn = 0;
-    printf("<%s:%d> ------ %s:%d ------\n", __func__, __LINE__, fcgi_ip, fcgi_port);
+    printf(" ------ %s:%d, pid: %d ------\n", fcgi_ip, fcgi_port, getpid());
     int fcgi_sock = create_server_socket(fcgi_ip, fcgi_port);
     for ( ; ; )
     {
-//		printf(" ---------------- wait connect %d ----------------\n", count_conn);
+//      printf(" ---------------- wait connect %d ----------------\n", count_conn);
         int clientSock = accept(fcgi_sock, NULL, NULL);
         if (clientSock == -1)
         {
