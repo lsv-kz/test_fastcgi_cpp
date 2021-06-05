@@ -9,7 +9,7 @@
 //#include <netdb.h>
 
 //======================================================================
-int create_server_socket(const char *host, int port)
+int create_server_socket(const char *ip, int port)
 {
     int sockfd, sock_opt = 1;
     struct sockaddr_in server_sockaddr;
@@ -39,14 +39,7 @@ int create_server_socket(const char *host, int port)
     server_sockaddr.sin_family = PF_INET;
     server_sockaddr.sin_port = htons(port);
 
-/*  if (inet_pton(PF_INET, addr, &(server_sockaddr.sin_addr)) < 1)
-    {
-        print_err("   Error inet_pton(%s): %s\n", addr, strerror(errno));
-        close(sockfd);
-        return -1;
-    }*/
-    server_sockaddr.sin_addr.s_addr = inet_addr(host);
-//  server_sockaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    server_sockaddr.sin_addr.s_addr = inet_addr(ip);
 
     if (bind(sockfd, (struct sockaddr *) &server_sockaddr, sizeof (server_sockaddr)) == -1)
     {

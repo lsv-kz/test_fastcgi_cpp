@@ -43,51 +43,68 @@ mtx_thr.unlock();
     cond_exit_thr.notify_one();
 }
 //======================================================================
+String get_time()
+{
+    struct tm t;
+    char s[40];
+    time_t now = time(NULL);
+
+    gmtime_r(&now, &t);
+
+    strftime(s, sizeof(s), "%a, %d %b %Y %H:%M:%S GMT", &t);
+    return s;
+}
+//======================================================================
+void send_html(FCGI_server & Fcgi, const char *s)
+{
+    Fcgi << "<!DOCTYPE HTML>\n"
+            "<html>\n"
+            " <head>\n"
+            "  <meta charset=\"UTF-8\">\n"
+            "  <title>File Upload</title>\n"
+            "  <style>\n"
+            "    body {\n"
+            "     margin-left:100px; margin-right:50px;\n"
+            "     background-color: rgb(182,145,66);\n"
+            "    }\n"
+            "  </style>\n"
+            " </head>\n"
+            " <body>\n"
+            "  <h3>" << s << "</h3>\n"
+            "  <hr>\n"
+            "  " << get_time().str() << "\n"
+            " </body>\n"
+            "</html>";
+}
+//======================================================================
 int fcgi_out(int count_conn, FCGI_server &Fcgi)
 {
-    Fcgi << "Content-Type: text/plain; charset=utf-8\r\n\r\n";
-    Fcgi << "count = " << count_conn << "\n";
+    //************************* FCGI_STDIN *****************************
+    const int size_buf = 4095;
+    char buf[size_buf + 1] = "-";
     
-    fcgi_header hd;
     for ( ; ; )
     {
-        int ret = Fcgi.fcgi_read_header(&hd);
-        if (ret <= 0)
+        int ret = Fcgi.read_from_client(buf, size_buf);
+        if (ret < 0)
         {
-            printf("<%s:%d>  Error fcgi_read_header()\n", __func__, __LINE__);
-            return -1;
+            fprintf(stderr, "<%s:%d> Error read from fcgi_client\n", __func__, __LINE__);
+            Fcgi << "Content-Type: text/html; charset=utf-8\r\n\r\n";
+            send_html(Fcgi, "Error read from fcgi_client");
+            return 0;
         }
-    //  printf("<%s:%d>  type=%d, len=%d, padd=%d\n", __func__, __LINE__, hd.type, hd.len, hd.paddingLen);
-        if (hd.len == 0)
+        else if (ret == 0)
+        {
             break;
-        
-        if (hd.type != FCGI_STDIN)
-        {
-            printf("<%s:%d>  Error type != FCGI_STDIN\n", __func__, __LINE__);
-            return -1;
         }
         
-        const int size_buf = 255;
-        char buf[size_buf + 1];
-        while (hd.len > 0)
-        {
-            int rd = (hd.len > size_buf) ? size_buf : hd.len;
-            ret = Fcgi.fcgi_read(buf, rd);
-            if (ret <= 0)
-            {
-                printf("<%s:%d>  Error fcgi_read()\n", __func__, __LINE__);
-                return -1;
-            }
-            
-            buf[ret] = 0;
-            Fcgi << buf;
-            hd.len -= ret;
-        }
-        if ((hd.paddingLen > 0) && (hd.paddingLen < 8))
-            Fcgi.fcgi_read(buf, hd.paddingLen);
+        buf[ret] = 0;
     }
-    
-    Fcgi << "\n\n";
+    //******************************************************************
+    Fcgi << "Content-Type: text/plain; charset=utf-8\r\n\r\n";
+    Fcgi << "count = " << count_conn << "\n";
+
+    Fcgi << buf << "\n\n";
     
     for ( int i = 0, n = Fcgi.len_param(); i < n; ++i)
     {
