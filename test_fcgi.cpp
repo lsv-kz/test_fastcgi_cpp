@@ -15,7 +15,7 @@ int create_server_socket(const char *host, int port);
 //======================================================================
 using namespace std;
 
-const int fcgi_port = 9004;
+const int fcgi_port = 9002;
 const char *fcgi_ip = "127.0.0.1";
 
 const int max_thr = 5;
@@ -189,8 +189,7 @@ int main(int argc, char *argv[])
             exit(1);
         }
         
-       /* int ret = */start_thr();
-  //      printf("<%s:%d> num thr: %d\n", __func__, __LINE__, ret);
+        start_thr();
     }
     
     return 0;

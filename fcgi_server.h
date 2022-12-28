@@ -4,7 +4,6 @@
 #include <cstdio>
 #include <poll.h>
 
-
 #include "String.h"
 #include "Array.h"
 
@@ -25,7 +24,7 @@
 #define FCGI_MAXTYPE            (FCGI_UNKNOWN_TYPE)
 #define requestId               1
 
-const int FCGI_SIZE_BUF = 8192;
+const int FCGI_SIZE_BUF = 8192;// FCGI_SIZE_BUF > 15
 
 //======================================================================
 typedef struct {
@@ -110,21 +109,26 @@ class FCGI_server
             {
                 if (errno == EINTR)
                     continue;
-                err = 1;
+                err = errno;
                 return -1;
             }
             else if (!ret)
             {
-                err = 1;
+                err = ETIMEDOUT;
                 return -1;
             }
             
             if (fdrd.revents & POLLIN)
             {
                 ret = read(fcgi_sock, p, len);
-                if (ret <= 0)
+                if (ret < 0)
                 {
-                    err = 1;
+                    err = errno;
+                    return -1;
+                }
+                else if (ret == 0)
+                {
+                    err = ECONNRESET;
                     return -1;
                 }
                 else
@@ -136,7 +140,7 @@ class FCGI_server
             }
             else
             {
-                err = 1;
+                err = ECONNRESET;
                 return -1;
             }
         }
@@ -162,16 +166,18 @@ class FCGI_server
             {
                 if (errno == EINTR)
                     continue;
+                err = errno;
                 break;
             }
             else if (!ret)
             {
-                ret = -1;
+                err = ETIMEDOUT;
                 break;
             }
             
             if (fdwr.revents != POLLOUT)
             {
+                err = ECONNRESET;
                 ret = -1;
                 break;
             }
@@ -181,6 +187,7 @@ class FCGI_server
             {
                 if ((errno == EINTR) || (errno == EAGAIN))
                     continue;
+                err = errno;
                 break;
             }
             
@@ -189,9 +196,7 @@ class FCGI_server
             p += ret;
         }
         
-        if (ret <= 0)
-            err = 1;
-        else
+        if (ret > 0)
             all_send += write_bytes;
         offset_out = 8;
     }
@@ -250,6 +255,7 @@ class FCGI_server
                 err = 1;
                 break;
             }
+
             ret = fcgi_get_param(hd);
             if (ret < 0)
             {
@@ -278,7 +284,7 @@ public://===============================================================
         
         if (!s)
         {
-            err = 1;
+            err = EINVAL;
             return *this;
         }
         
@@ -286,7 +292,7 @@ public://===============================================================
         if (len == 0)
         {
             fcgi_set_header(buf_out, FCGI_STDOUT, offset_out - 8);
-            if (FCGI_SIZE_BUF < (offset_out + 24))
+            if (FCGI_SIZE_BUF < (offset_out + (8 * 3) + 7))   //
             {
                 fcgi_send();
                 fcgi_set_header(buf_out, FCGI_STDOUT, 0);
@@ -312,9 +318,16 @@ public://===============================================================
             return *this;
         }
         
-        while (FCGI_SIZE_BUF < (offset_out + len))
+        while (FCGI_SIZE_BUF < (offset_out + len + 7))  //
         {
-            int l = FCGI_SIZE_BUF - offset_out;
+            int l = FCGI_SIZE_BUF - (offset_out + 7);  //
+            if (l <= 0)
+            {
+                fprintf(stderr, "<%s:%d> Error: (len = %d) <= 0\n", __func__, __LINE__, l);
+                err = 1;
+                return *this;
+            }
+
             memcpy(buf_out + offset_out, s + n, l);
             offset_out += l;
             len -= l;
@@ -349,6 +362,43 @@ public://===============================================================
         return *this;
     }
     //------------------------------------------------------------------
+    int fcgi_out_buf(const char * buf, int len) // *** FCGI_STDOUT ***
+    {
+        if (err)
+            return err;
+        if (!buf)
+        {
+            err = EINVAL;
+            return err;
+        }
+
+        int n = 0;
+        while (FCGI_SIZE_BUF < (offset_out + len))
+        {
+            int l = FCGI_SIZE_BUF - offset_out;
+            memcpy(buf_out + offset_out, buf + n, l);
+            offset_out += l;
+            len -= l;
+            n += l;
+            fcgi_set_header(buf_out, FCGI_STDOUT, offset_out - 8);
+            fcgi_send();
+            if (err)
+            {
+                return err;
+            }
+        }
+        
+        memcpy(buf_out + offset_out, buf + n, len);
+        offset_out += len;
+        buf_out[offset_out] = 0;
+        if (FCGI_SIZE_BUF == (offset_out + 6))
+        {
+            fcgi_set_header(buf_out, FCGI_STDOUT, offset_out - 8);
+            fcgi_send();
+        }
+        return 0;
+    }
+    //------------------------------------------------------------------
     int error() const { return err; }
     int send_bytes() { return all_send; }
     int len_param() { return  Param.len(); }
@@ -356,7 +406,7 @@ public://===============================================================
     {
         if (n >= Param.len())
         {
-            err = 1;
+            err = EINVAL;
             return NULL;
         }
         return Param.get(n)->str();
@@ -378,7 +428,7 @@ public://===============================================================
             return -1;
         }
 
-        const int size = 1024;
+        const int size = FCGI_SIZE_BUF; // size > 8
         char buf[size], *p = buf;
         int rd;
         int n = 0;
@@ -393,15 +443,15 @@ public://===============================================================
             else
                 rd = (size - n);
             p = buf;
-            int n_ = fcgi_read(p + n, rd);
-            if ((n_ != rd) || (n_ == 0))
+            int ret = fcgi_read(p + n, rd);
+            if ((ret != rd) || (ret == 0))
             {
                 err = 1;
                 return -1;
             }
 
-            n += n_;
-            header.len -= n_;
+            n += ret;
+            header.len -= ret;
             while (((n > 8) || !header.len) && (n > 0))
             {
                 s = "";
