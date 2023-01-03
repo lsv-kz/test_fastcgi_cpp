@@ -43,7 +43,7 @@ mtx_thr.unlock();
     cond_exit_thr.notify_one();
 }
 //======================================================================
-String get_time()
+string get_time()
 {
     struct tm t;
     char s[40];
@@ -72,7 +72,7 @@ void send_html(FCGI_server & Fcgi, const char *s)
             " <body>\n"
             "  <h3>" << s << "</h3>\n"
             "  <hr>\n"
-            "  " << get_time().str() << "\n"
+            "  " << get_time().c_str() << "\n"
             " </body>\n"
             "</html>";
 }
@@ -82,10 +82,10 @@ int fcgi_out(int count_conn, FCGI_server &Fcgi)
     //************************* FCGI_STDIN *****************************
     const int size_buf = 4095;
     char buf[size_buf + 1] = "-";
-    
+
     for ( ; ; )
     {
-        int ret = Fcgi.read_from_client(buf, size_buf);
+        int ret = Fcgi.read_from_fcgi_client(buf, size_buf);
         if (ret < 0)
         {
             fprintf(stderr, "<%s:%d> Error read from fcgi_client\n", __func__, __LINE__);
@@ -97,7 +97,7 @@ int fcgi_out(int count_conn, FCGI_server &Fcgi)
         {
             break;
         }
-        
+
         buf[ret] = 0;
     }
     //******************************************************************
@@ -105,7 +105,7 @@ int fcgi_out(int count_conn, FCGI_server &Fcgi)
     Fcgi << "count = " << count_conn << "\n";
 
     Fcgi << buf << "\n\n";
-    
+
     for ( int i = 0, n = Fcgi.len_param(); i < n; ++i)
     {
         Fcgi << Fcgi.param(i) << "\n";
@@ -116,23 +116,25 @@ int fcgi_out(int count_conn, FCGI_server &Fcgi)
         }
     }
 
+    char s[] = "123456789";
+    Fcgi.fcgi_out_buf(s, strlen(s));
+
     return 0;
 }
 //======================================================================
 void response(int fcgi_sock, int count_conn)
 {
     FCGI_server Fcgi(fcgi_sock);
-    
+
     if (Fcgi.error())
     {
         printf("<%s:%d>  Error crteate object Fcgi\n", __func__, __LINE__);
         return;
     }
-    
+
     fcgi_out(count_conn, Fcgi);
     Fcgi << "";
 }
-
 //======================================================================
 void response_(int sock, int count_conn)
 {
@@ -174,7 +176,7 @@ int main(int argc, char *argv[])
                 break;
             }
         }
-        
+
         ++count_conn;
 
         thread thr;
@@ -188,9 +190,9 @@ int main(int argc, char *argv[])
             printf("<%s:%d> Error create thread: %s\n", __func__, __LINE__, strerror(errno));
             exit(1);
         }
-        
+
         start_thr();
     }
-    
+
     return 0;
 }

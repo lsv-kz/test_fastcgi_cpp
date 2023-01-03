@@ -12,7 +12,7 @@ OBJS = $(OBJSDIR)/test_fcgi.o \
 test_fcgi: $(OBJS)
 	$(CC) $(CFLAGS) -o $@  $(OBJS) -lpthread
 
-$(OBJSDIR)/test_fcgi.o: test_fcgi.cpp String.h Array.h fcgi_server.h
+$(OBJSDIR)/test_fcgi.o: test_fcgi.cpp fcgi_server.h
 	$(CC) $(CFLAGS) -c test_fcgi.cpp -o $@
 
 $(OBJSDIR)/create_socket.o: create_socket.cpp
